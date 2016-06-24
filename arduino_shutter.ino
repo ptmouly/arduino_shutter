@@ -73,16 +73,19 @@
 //////////////////////////
 // how many shutters do you have ?
 //////////////////////////
-const int nbshutters = 10;
+const int nbshutters = 4;
 
 /////////////////////////
 // Connected pins on your arduino
-// REMARK: pins used by ethernet shield : 10 11 12 13
+// REMARK: pins used by ethernet shield :
+// UNO   4 10 11 12 13
+// MEGA  4 10 50 51 52
 // ledUp and ledDown are for relays and pushButtonUp/pushButtonDown for buttons 
-int        ledUp[] =   {30, 32, 34, 36,  38,  40,  42,  44,  46,  48,  0 };
-int        ledDown[] = {31, 33, 34, 37,  39,  41,  43,  45,  47,  49,  0 };
-int pushButtonUp[] =   { 4,  8, 14, 16,  18,  20,  22,  24,  26,  28,  50 };
-int pushButtonDown[] = { 7,  9, 15, 17,  19,  21,  23,  25,  27,  29,  51 };
+const int nbmaxitems = 11;
+int        ledUp[] =   {30, 32, 34, 36,  38,  40,  42,  44,  46,   0,  0 };
+int        ledDown[] = {31, 33, 35, 37,  39,  41,  43,  45,  47,   0,  0 };
+int pushButtonUp[] =   { 5,  8, 14, 16,  18,  20,  22,  24,  26,   0,  48 };
+int pushButtonDown[] = { 7,  9, 15, 17,  19,  21,  23,  25,  27,   0,  49 };
 
 // you can give a name here that will be displayed on the webpage
 const char* names[] = { "Ch Parents G", "Ch Parents D", 
@@ -130,7 +133,7 @@ struct ROLLING_SHUTTER {
 // actual data, 
 // the +1 is used for the centralized button
 //////////////////////////
-ROLLING_SHUTTER shutters[nbshutters+1];
+ROLLING_SHUTTER shutters[nbmaxitems];
 
 
 
@@ -145,12 +148,13 @@ int g_debug = 0;
 
 // Enter a MAC address and IP address for your controller below.
 // The IP address will be dependent on your local network:
-byte mac[] = {  0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
+byte mac[] = {  0x90, 0xA2, 0xDA, 0x10, 0xAA, 0xD1 };
 
 // Initialize the Ethernet server library
 // with the IP address and port you want to use
 // (port 80 is default for HTTP):
 EthernetServer server(80);
+int last_dhcp_renew = 0;
 
 ////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////
@@ -164,7 +168,7 @@ void setup ()
   Serial.println("init");
   
   //init
-  for(int i=0; i<nbshutters+1; i++)
+  for(int i=0; i<nbmaxitems; i++)
   {
     shutters[i].buttons[ITEM_UP].pin = pushButtonUp[i];
     shutters[i].buttons[ITEM_UP].state = false;
@@ -186,26 +190,55 @@ void setup ()
     shutters[i].strname = names[i];
     shutters[i].last_action_time_ms = millis();
     
+    if(i >= nbshutters && i < nbmaxitems-1)
+    {
+       shutters[i].relays[ITEM_UP].pin = 0;
+       shutters[i].relays[ITEM_DOWN].pin = 0;
+       shutters[i].buttons[ITEM_UP].pin = 0;
+       shutters[i].buttons[ITEM_DOWN].pin = 0;
+    }
+    
+    
     if(i != nbshutters && shutters[i].relays[ITEM_UP].pin > 0)
     {
       pinMode (shutters[i].relays[ITEM_UP].pin, OUTPUT);
-      pinMode (shutters[i].relays[ITEM_DOWN].pin, OUTPUT);
-      
       digitalWrite(shutters[i].relays[ITEM_UP].pin, RELAY_OPEN);
+      Serial.print("init relay ");
+      Serial.print(i);
+      Serial.print(" up  , pin ");
+      Serial.println(shutters[i].relays[ITEM_UP].pin);
+     
+      pinMode (shutters[i].relays[ITEM_DOWN].pin, OUTPUT);
       digitalWrite(shutters[i].relays[ITEM_DOWN].pin, RELAY_OPEN);
+      Serial.print("init relay ");
+      Serial.print(i);
+      Serial.print(" down, pin ");
+      Serial.println(shutters[i].relays[ITEM_DOWN].pin);
     }
     
     if( shutters[i].buttons[ITEM_UP].pin > 0)
     {
       pinMode (shutters[i].buttons[ITEM_UP].pin, INPUT);
+      Serial.print("init button ");
+      Serial.print(i);
+      Serial.print(" up  , pin ");
+      Serial.println(shutters[i].buttons[ITEM_UP].pin);
+
       pinMode (shutters[i].buttons[ITEM_DOWN].pin, INPUT);
+       Serial.print("init button ");
+      Serial.print(i);
+      Serial.print(" down, pin ");
+      Serial.println(shutters[i].buttons[ITEM_DOWN].pin);
+
     }
   }
   
+   Serial.println("init server");
   Ethernet.begin(mac);
   server.begin();
   Serial.print("server is at ");
   Serial.println(Ethernet.localIP());
+  last_dhcp_renew = millis();
   
   Serial.println("init done");
 }
@@ -225,7 +258,7 @@ void loop ()
  
   if(ignore_centralized_buttons == false)
   {
-     vrall(nbshutters + 0); // -> VRALL ALL
+     vrall(nbmaxitems-1); // -> VRALL ALL
   }
   //delay(100);
   delay(10);
@@ -274,7 +307,7 @@ void print_html_status(EthernetClient* client)
   
       client->println("<table><tr><td>shutter</td><td>action</td><td>state</td><td>button up</td><td>button down</td><td>relay up</td><td>relay down</td></tr>");
       // output the value of each analog input pin
-      for (int i = 0; i < nbshutters+1; i++) 
+      for (int i = 0; i < nbmaxitems; i++) 
       {
         if( shutters[i].buttons[ITEM_UP].pin == 0)
           continue;
@@ -349,14 +382,20 @@ void process_shutter_query(EthernetClient* client, String query)
       String strparam = query.substring(sep, sep2);
       if(strparam.length() < 3)
       {
-        if(sep2 == -1) break;
+        if(sep2 == -1)
+       {
+          
+         break;
+       }
         sep= sep2+1;
         continue;
-      }
+      }//if
         
       int equ = strparam.indexOf("=");
       if(equ != -1)
       {
+           Serial.print("process: ");
+           Serial.println(strparam);
           String strname = strparam.substring(0, equ);
           String strvalue = strparam.substring(equ+1);
           
@@ -390,7 +429,7 @@ void process_shutter_query(EthernetClient* client, String query)
                ignore_centralized_buttons= false;
              }
           }
-          else if(strname == "all" || iv == nbshutters)
+          else if(strname == "all" || iv == nbmaxitems-1)
           {
              if(strvalue == "stop")
             {
@@ -401,8 +440,8 @@ void process_shutter_query(EthernetClient* client, String query)
                   digitalWrite(shutters[i].relays[ITEM_DOWN].pin, RELAY_OPEN);
                   digitalWrite(shutters[i].relays[ITEM_UP].pin, RELAY_OPEN);
                 }
-                shutters[nbshutters].relays[ITEM_UP].state = false;
-                shutters[nbshutters].relays[ITEM_DOWN].state = false;
+                shutters[nbmaxitems-1].relays[ITEM_UP].state = false;
+                shutters[nbmaxitems-1].relays[ITEM_DOWN].state = false;
                   
               if(g_debug) client->println("<div>all stop</div>");
             }
@@ -415,8 +454,8 @@ void process_shutter_query(EthernetClient* client, String query)
                   digitalWrite(shutters[i].relays[ITEM_DOWN].pin, RELAY_OPEN);
                   digitalWrite(shutters[i].relays[ITEM_UP].pin, RELAY_CLOSED);
                 }
-                shutters[nbshutters].relays[ITEM_UP].state = true;
-                shutters[nbshutters].relays[ITEM_DOWN].state = false;
+                shutters[nbmaxitems-1].relays[ITEM_UP].state = true;
+                shutters[nbmaxitems-1].relays[ITEM_DOWN].state = false;
                 
               if(g_debug) client->println("<div>all up</div>");
             }
@@ -430,17 +469,21 @@ void process_shutter_query(EthernetClient* client, String query)
                   digitalWrite(shutters[i].relays[ITEM_DOWN].pin, RELAY_CLOSED);
                 }
                 
-                shutters[nbshutters].relays[ITEM_UP].state = false;
-                shutters[nbshutters].relays[ITEM_DOWN].state = true;
+                shutters[nbmaxitems-1].relays[ITEM_UP].state = false;
+                shutters[nbmaxitems-1].relays[ITEM_DOWN].state = true;
                 
               if(g_debug)  client->println("<div>all down</div>");
             }
-          }
+          }//else
           
           
           if(iv < 0 || iv >= nbshutters)
           {
-            if(sep2 == -1) break;
+            if(sep2 == -1) 
+            {
+              
+              break;
+              }
             sep= sep2+1;
             continue;
           }
@@ -471,7 +514,11 @@ void process_shutter_query(EthernetClient* client, String query)
           }
       }
       
-      if(sep2 == -1) break;
+      if(sep2 == -1) 
+      {
+        
+        break;
+      }
       sep= sep2+1;
     }
     
@@ -481,16 +528,29 @@ void process_shutter_query(EthernetClient* client, String query)
 ////////////////////////////////////////////////////////////////
 void process_action(EthernetClient* client, String action, String query)
 {
-    if(action == "/shutter")
+    if(action == "/shutters")
     {
         process_shutter_query(client, query);
     }
+    else
+    {
+        Serial.print("unknown action : ");
+        Serial.println(action);
+    }
 }
+
 
 ////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////
 void manage_client()
 {
+  
+  if(   millis() - last_dhcp_renew > 1000*60*60*24
+     || millis() < last_dhcp_renew)
+  {
+       Ethernet.maintain();
+       last_dhcp_renew = millis();
+  }
    // listen for incoming clients
   EthernetClient client = server.available();
   int pos, pos2;
@@ -642,16 +702,22 @@ void test_button(int index, int up_down)
     {       
       
       int diff = 0; 
-    if(millis() >= shutters[index].last_action_time_ms)
+      int inow = millis();
+    if(inow >= shutters[index].last_action_time_ms)
     {
-      diff = millis() - shutters[index].last_action_time_ms;
-      if(diff < MIN_TIME_ACTION_MS)
+      diff = inow - shutters[index].last_action_time_ms;
+      if(diff > 0 && diff < MIN_TIME_ACTION_MS)
       {
-          trace_button(index, up_down);
+          /*trace_button(index, up_down);
           Serial.print(" pushed too fast !! (");
           Serial.print(diff);
-          Serial.println("ms)");
-    
+          Serial.print("ms)  ");*/
+
+         /* Serial.print("last_action ");          
+          Serial.print(shutters[index].last_action_button);    
+          Serial.print(" last_state ");
+          Serial.println(shutters[index].buttons[up_down].last_state);
+    */
          return;
       }
     }
@@ -671,7 +737,7 @@ void test_button(int index, int up_down)
      if(current_relay != next_relay_val)
         DW (shutters[index].relays[up_down].pin, next_relay_val);
         
-     shutters[index].last_action_time_ms = millis();
+     shutters[index].last_action_time_ms = inow;
     }
 
     shutters[index].buttons[up_down].state = true;
@@ -721,9 +787,10 @@ test_general_button(int index, int up_down)
       
       
     int diff = 0; 
-    if(millis() >= shutters[index].last_action_time_ms)
+    int inow = millis();
+    if(inow >= shutters[index].last_action_time_ms)
     {
-      diff = millis() - shutters[index].last_action_time_ms;
+      diff = inow - shutters[index].last_action_time_ms;
       if(diff < MIN_TIME_ACTION_MS)
       {
           trace_button(index, up_down);
@@ -755,7 +822,7 @@ test_general_button(int index, int up_down)
         digitalWrite (shutters[i].relays[up_down].pin, shutters[i].relays[up_down].state ? RELAY_CLOSED :  RELAY_OPEN);
       }
       
-      shutters[index].last_action_time_ms = millis();
+      shutters[index].last_action_time_ms = inow;
     }
    
     shutters[index].last_action_button = up_down;
