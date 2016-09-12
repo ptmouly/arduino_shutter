@@ -149,7 +149,7 @@ boolean g_enable_centralized_buttons = true;
  
 //
 String bufstr = String(100); //string for fetching data from address
-int count = 0;
+unsigned long count = 0;
 int g_debug = 0;
 
 // Enter a MAC address and IP address for your controller below.
@@ -160,7 +160,7 @@ byte mac[] = {  0x90, 0xA2, 0xDA, 0x10, 0xAA, 0xD1 };
 // with the IP address and port you want to use
 // (port 80 is default for HTTP):
 EthernetServer server(80);
-int last_dhcp_renew = 0;
+unsigned long last_dhcp_renew = 0;
 
 ////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////
@@ -284,18 +284,25 @@ void print_html_header(EthernetClient* client)
       client->println("<!DOCTYPE HTML>");
       client->println(" <STYLE type='text/css'>");
       client->println("* { margin:0 auto; padding:0; }");
-      client->println("body { font-family:Tahoma,sans-serif,Verdana,Arial; color:black; }");
+      client->println("body { font-family:Tahoma,sans-serif,Verdana,Arial; color:black; font-size:14pt; }");
       client->println("table {border:1px solid black; border-collapse:collapse; padding: 10px;}");
       client->println("a,a:hover,a:visited {color:black; }");
-      client->println("td {border: 1px solid black; padding: 3px; min-width:60px; }");
+      client->println("td {border: 1px solid black; padding: 7px; min-width:60px; }");
       client->println(" </STYLE>");
-      client->println("<html><title>Shutters</title>");
+      client->println("<html>");
+      client->println("<head>");
+      client->println("<meta http-equiv='Content-type' content='text/html; charset=UTF-8' />");
+      client->println("<meta name='viewport' content='width=320, initial-scale=1.0, maximum-scale=1.0, user-scalable=0' />");
+      client->println("<title>Shutters</title>");
+      client->println("</head>");
+      client->println("<body>");
 }
 
 ////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////
 void print_html_footer(EthernetClient* client)
 {
+       client->println("</body>");
        client->println("</html>");
 }
 
@@ -558,7 +565,7 @@ void process_action(EthernetClient* client, String action, String query)
 void manage_client()
 {
   
-  if(millis() - last_dhcp_renew > 1000*60*60*24)
+  if(millis() - last_dhcp_renew > (1000*60*60*24))
   {
        Ethernet.maintain();
        last_dhcp_renew = millis();
@@ -573,7 +580,7 @@ void manage_client()
   boolean qs = false;
   
   if (client) {
-    Serial.println("new client");
+   // Serial.println("new client");
    
     // reset the input buffer
     bufstr = "";
@@ -657,7 +664,7 @@ void manage_client()
     delay(1);
     // close the connection:
     client.stop();
-    Serial.println("client disconnected");
+   // Serial.println("client disconnected");
   }
 }
 
@@ -708,17 +715,21 @@ void test_button(int index, int up_down)
   int current_relay = digitalRead(shutters[index].relays[up_down].pin);
   //int current_relay_op = digitalRead(shutters[index].relays[!up_down].pin);
   int next_relay_val;
-  int inow = millis();
+  unsigned long inow = millis();
   
   // timeout management
   if(   AUTO_STOP_TIMEOUT != 0 
      && current_relay == RELAY_CLOSED 
      && (inow - shutters[index].last_action_time_ms) > AUTO_STOP_TIMEOUT)
   {
+          unsigned long diff = inow - shutters[index].last_action_time_ms;
+          
           DW(shutters[index].relays[up_down].pin, RELAY_OPEN);
           shutters[index].relays[up_down].state = false;
           trace_button(index, up_down);
-          Serial.println(" auto timeout");
+          Serial.print(" auto timeout (");
+          Serial.print(diff);
+          Serial.println("ms)  ");
           
           return;
   }
@@ -736,7 +747,7 @@ void test_button(int index, int up_down)
         || !shutters[index].buttons[up_down].last_state)
     {       
       
-      int diff = 0; 
+      unsigned long diff = 0; 
       
       if(inow >= shutters[index].last_action_time_ms)
       {
@@ -816,7 +827,7 @@ test_general_button(int index, int up_down)
   int current_val =   digitalRead(shutters[index].buttons[up_down].pin);
   int current_relay = digitalRead(shutters[index].relays[up_down].pin);
   int current_relay_op = digitalRead(shutters[index].relays[!up_down].pin);
-  int inow = millis();
+  unsigned long inow = millis();
   
   if (current_val == BUTTON_PRESSED)
   {
@@ -827,7 +838,7 @@ test_general_button(int index, int up_down)
     {
       
       
-    int diff = 0; 
+    unsigned long diff = 0; 
   
     if(inow >= shutters[index].last_action_time_ms)
     {
