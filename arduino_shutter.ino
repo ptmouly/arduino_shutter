@@ -1,5 +1,5 @@
 ////////////////////////////////////////////////////////////////////////////
-// Rolling shutter management v0.1 (local, centralized and remote)
+// Rolling shutter management v0.2 (local, centralized and remote)
 // written by Pete (june 2016)
 //
 // !! USE AT YOUR OWN RISK !!
@@ -14,7 +14,7 @@
 //     - the centralized buttons next to the entrance door (up and down)
 //     - the request from the web server (up/down/stop)
 //
-// Each shutter is connected with 3 wire (up/down/phase), if the phase
+// Each shutter is connected with 3 wires (up/down/phase), if the phase
 // is connected to 'up' it will go up, if connected to 'down' it will go down.
 // Up and Down should not be connected at the same time
 //
@@ -22,6 +22,8 @@
 // If up is pressed once, the shutter should go up
 // If up is pressed a second time, the shutter should stop
 // Same logic for down.
+//
+// Additionnally, you can set a timeout that will turn all relay off.
 //
 // The web server provide a simple API :
 //        http://<IP>/shutter
@@ -70,9 +72,13 @@
   // connected to the ground or vcc and occilate from the noise
   #define MIN_TIME_ACTION_MS 300
   
+  // put back relays to stop state for the shutter, set to 0 to disable
+  #define AUTO_STOP_TIMEOUT  (1000*60*2) 
+  
 //////////////////////////
 // how many shutters do you have ?
 //////////////////////////
+const int nbmaxitems = 11;
 const int nbshutters = 4;
 
 /////////////////////////
@@ -81,19 +87,22 @@ const int nbshutters = 4;
 // UNO   4 10 11 12 13
 // MEGA  4 10 50 51 52
 // ledUp and ledDown are for relays and pushButtonUp/pushButtonDown for buttons 
-const int nbmaxitems = 11;
+// This is a [4 x nbmaxitems] matrix.
+// nbshutters columns should be filled, plus the last column for the centralized buttons
 int        ledUp[] =   {30, 32, 34, 36,  38,  40,  42,  44,  46,   0,  0 };
 int        ledDown[] = {31, 33, 35, 37,  39,  41,  43,  45,  47,   0,  0 };
 int pushButtonUp[] =   { 5,  8, 14, 16,  18,  20,  22,  24,  26,   0,  48 };
 int pushButtonDown[] = { 7,  9, 15, 17,  19,  21,  23,  25,  27,   0,  49 };
 
 // you can give a name here that will be displayed on the webpage
-const char* names[] = { "Ch Parents G", "Ch Parents D", 
-                        "Ch enfants G", "Ch enfants D", 
+const char* names[] = { 
+                        "Salon C",  "Bureau", 
                         "Ch invites", 
-                        "Bureau", 
-                        "Salon G", "Salon C", "Salon D", 
-                        "Cuisine", "General" }; 
+                        "Ch Parents G", "Ch Parents D", 
+                        "Ch enfants G", "Ch enfants D", 
+                        "Salon G", "Salon D", 
+                        "", 
+                        "General" }; 
 
 
 //////////////////////////
@@ -130,16 +139,13 @@ struct ROLLING_SHUTTER {
   #define ITEM_DOWN 1
 
 //////////////////////////
-// actual data, 
-// the +1 is used for the centralized button
+// actual data,
 //////////////////////////
 ROLLING_SHUTTER shutters[nbmaxitems];
 
-
-
 // global flag to ignore hardware buttons and only use webpage API
-boolean ignore_buttons = false;
-boolean ignore_centralized_buttons = false;
+boolean g_enable_buttons = true;
+boolean g_enable_centralized_buttons = true;
  
 //
 String bufstr = String(100); //string for fetching data from address
@@ -161,9 +167,9 @@ int last_dhcp_renew = 0;
 void setup ()
 {
   Serial.begin(9600);
-   while (!Serial) {
+  /* while (!Serial) {
     ; // wait for serial port to connect. Needed for Leonardo only
-  }
+  }*/
   
   Serial.println("init");
   
@@ -207,13 +213,17 @@ void setup ()
       Serial.print(i);
       Serial.print(" up  , pin ");
       Serial.println(shutters[i].relays[ITEM_UP].pin);
-     
+      delay(100);
+      
       pinMode (shutters[i].relays[ITEM_DOWN].pin, OUTPUT);
       digitalWrite(shutters[i].relays[ITEM_DOWN].pin, RELAY_OPEN);
       Serial.print("init relay ");
       Serial.print(i);
       Serial.print(" down, pin ");
       Serial.println(shutters[i].relays[ITEM_DOWN].pin);
+      
+      delay(100);
+     
     }
     
     if( shutters[i].buttons[ITEM_UP].pin > 0)
@@ -223,13 +233,15 @@ void setup ()
       Serial.print(i);
       Serial.print(" up  , pin ");
       Serial.println(shutters[i].buttons[ITEM_UP].pin);
-
+      
+      delay(100);
+      
       pinMode (shutters[i].buttons[ITEM_DOWN].pin, INPUT);
        Serial.print("init button ");
       Serial.print(i);
       Serial.print(" down, pin ");
       Serial.println(shutters[i].buttons[ITEM_DOWN].pin);
-
+      delay(100);
     }
   }
   
@@ -250,19 +262,20 @@ void loop ()
    manage_client();
 //    Serial.println("----------");
 
-   if(ignore_buttons == false)
+   
    for(int i=0; i<nbshutters; i++)
    {
-      vr(i);
-  }
+         vr(i);
+   }
  
-  if(ignore_centralized_buttons == false)
+  if(g_enable_centralized_buttons)
   {
      vrall(nbmaxitems-1); // -> VRALL ALL
   }
   //delay(100);
   delay(10);
 }
+
 
 ////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////
@@ -292,17 +305,17 @@ void print_html_status(EthernetClient* client)
 {
   client->print("<div>Buttons: ");
 
- if(ignore_buttons)
-  client->print(" <a href='?ignorebuttons=false'>Disabled</a>");
+ if(g_enable_buttons)
+  client->print(" <a href='?enablebuttons=false'>Disabled</a>");
  else
-  client->print(" <a href='?ignorebuttons=true'>Enabled</a>");
+  client->print(" <a href='?enablebuttons=true'>Enabled</a>");
   
   client->println("</div>");
    client->print("<div>Centralized buttons: ");
-  if(ignore_centralized_buttons)
-    client->print(" <a href='?ignorecentralizedbuttons=false'>Disabled</a>");
+  if(g_enable_centralized_buttons)
+    client->print(" <a href='?enablecentralizedbuttons=false'>Disabled</a>");
   else
-    client->print(" <a href='?ignorecentralizedbuttons=true'>Enabled</a>");
+    client->print(" <a href='?enablecentralizedbuttons=true'>Enabled</a>");
   client->println("</div>");
   
       client->println("<table><tr><td>shutter</td><td>action</td><td>state</td><td>button up</td><td>button down</td><td>relay up</td><td>relay down</td></tr>");
@@ -407,26 +420,26 @@ void process_shutter_query(EthernetClient* client, String query)
           
           int iv = strname.toInt() - 1;
           
-          if(strname == "ignorebuttons")
+          if(strname == "enablebuttons")
           {
              if(strvalue == "true")
              {            
-               ignore_buttons= true;
+               g_enable_buttons= true;
              }
              else  if(strvalue == "false")
              {            
-               ignore_buttons= false;
+               g_enable_buttons= false;
              }
           }
-          else if(strname == "ignorecentralizedbuttons")
+          else if(strname == "enablecentralizedbuttons")
           {
             if(strvalue == "true")
              {            
-               ignore_centralized_buttons= true;
+               g_enable_centralized_buttons= true;
              }
              else  if(strvalue == "false")
              {            
-               ignore_centralized_buttons= false;
+               g_enable_centralized_buttons= false;
              }
           }
           else if(strname == "all" || iv == nbmaxitems-1)
@@ -545,8 +558,7 @@ void process_action(EthernetClient* client, String action, String query)
 void manage_client()
 {
   
-  if(   millis() - last_dhcp_renew > 1000*60*60*24
-     || millis() < last_dhcp_renew)
+  if(millis() - last_dhcp_renew > 1000*60*60*24)
   {
        Ethernet.maintain();
        last_dhcp_renew = millis();
@@ -669,14 +681,18 @@ void
 trace_button(int index, int up_down)
 {
       Serial.print("[");
-      Serial.print(count);
+      char tbs[16];
+      sprintf(tbs, "%05d", count);
+      Serial.print(tbs);
       Serial.print("]");
       Serial.print(" button ");
+      sprintf(tbs, "%04d", index);
       Serial.print(index);
       Serial.print(":");
-      Serial.print(up_down == ITEM_UP ? "UP" : "DOWN");
+      Serial.print(up_down == ITEM_UP ? "UP  " : "DOWN");
       Serial.print(" (");
-      Serial.print(shutters[index].buttons[up_down].pin);
+      sprintf(tbs, "%04d", shutters[index].buttons[up_down].pin);
+      Serial.print(tbs);
       Serial.print(")");
       count++;
 }
@@ -692,6 +708,25 @@ void test_button(int index, int up_down)
   int current_relay = digitalRead(shutters[index].relays[up_down].pin);
   //int current_relay_op = digitalRead(shutters[index].relays[!up_down].pin);
   int next_relay_val;
+  int inow = millis();
+  
+  // timeout management
+  if(   AUTO_STOP_TIMEOUT != 0 
+     && current_relay == RELAY_CLOSED 
+     && (inow - shutters[index].last_action_time_ms) > AUTO_STOP_TIMEOUT)
+  {
+          DW(shutters[index].relays[up_down].pin, RELAY_OPEN);
+          shutters[index].relays[up_down].state = false;
+          trace_button(index, up_down);
+          Serial.println(" auto timeout");
+          
+          return;
+  }
+  
+  if(!g_enable_buttons)
+  {
+      return;
+  }
   
   if (current_val == BUTTON_PRESSED)
   {
@@ -702,25 +737,25 @@ void test_button(int index, int up_down)
     {       
       
       int diff = 0; 
-      int inow = millis();
-    if(inow >= shutters[index].last_action_time_ms)
-    {
-      diff = inow - shutters[index].last_action_time_ms;
-      if(diff > 0 && diff < MIN_TIME_ACTION_MS)
+      
+      if(inow >= shutters[index].last_action_time_ms)
       {
-          /*trace_button(index, up_down);
-          Serial.print(" pushed too fast !! (");
-          Serial.print(diff);
-          Serial.print("ms)  ");*/
-
-         /* Serial.print("last_action ");          
-          Serial.print(shutters[index].last_action_button);    
-          Serial.print(" last_state ");
-          Serial.println(shutters[index].buttons[up_down].last_state);
-    */
-         return;
+        diff = inow - shutters[index].last_action_time_ms;
+        if(diff < MIN_TIME_ACTION_MS)
+        {
+           /* trace_button(index, up_down);
+            Serial.print(" pushed too fast !! (");
+            Serial.print(diff);
+            Serial.println("ms)  ");*/
+  
+           /* Serial.print("last_action ");          
+            Serial.print(shutters[index].last_action_button);    
+            Serial.print(" last_state ");
+            Serial.println(shutters[index].buttons[up_down].last_state);
+      */
+           return;
+        }
       }
-    }
     
       trace_button(index, up_down);
       Serial.print(" pushed (");
@@ -738,6 +773,11 @@ void test_button(int index, int up_down)
         DW (shutters[index].relays[up_down].pin, next_relay_val);
         
      shutters[index].last_action_time_ms = inow;
+    }
+    else
+    {
+        /*trace_button(index, up_down);
+        Serial.println(" still pushed");*/
     }
 
     shutters[index].buttons[up_down].state = true;
@@ -776,6 +816,7 @@ test_general_button(int index, int up_down)
   int current_val =   digitalRead(shutters[index].buttons[up_down].pin);
   int current_relay = digitalRead(shutters[index].relays[up_down].pin);
   int current_relay_op = digitalRead(shutters[index].relays[!up_down].pin);
+  int inow = millis();
   
   if (current_val == BUTTON_PRESSED)
   {
@@ -787,7 +828,7 @@ test_general_button(int index, int up_down)
       
       
     int diff = 0; 
-    int inow = millis();
+  
     if(inow >= shutters[index].last_action_time_ms)
     {
       diff = inow - shutters[index].last_action_time_ms;
