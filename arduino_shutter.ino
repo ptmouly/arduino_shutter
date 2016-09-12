@@ -395,6 +395,7 @@ void print_html_status(EthernetClient* client)
 void process_shutter_query(EthernetClient* client, String query)
 {
     int sep = 0;
+    unsigned long inow = millis();
 
     while(sep != -1)
     {
@@ -459,11 +460,12 @@ void process_shutter_query(EthernetClient* client, String query)
                   shutters[i].relays[ITEM_DOWN].state = false;
                   digitalWrite(shutters[i].relays[ITEM_DOWN].pin, RELAY_OPEN);
                   digitalWrite(shutters[i].relays[ITEM_UP].pin, RELAY_OPEN);
+                  shutters[i].last_action_time_ms = inow;
                 }
                 shutters[nbmaxitems-1].relays[ITEM_UP].state = false;
                 shutters[nbmaxitems-1].relays[ITEM_DOWN].state = false;
                   
-              if(g_debug) client->println("<div>all stop</div>");
+             // if(g_debug) client->println("<div>all stop</div>");
             }
             else if(strvalue == "up")
             {
@@ -473,11 +475,12 @@ void process_shutter_query(EthernetClient* client, String query)
                   shutters[i].relays[ITEM_DOWN].state = false;
                   digitalWrite(shutters[i].relays[ITEM_DOWN].pin, RELAY_OPEN);
                   digitalWrite(shutters[i].relays[ITEM_UP].pin, RELAY_CLOSED);
+                  shutters[i].last_action_time_ms = inow;
                 }
                 shutters[nbmaxitems-1].relays[ITEM_UP].state = true;
                 shutters[nbmaxitems-1].relays[ITEM_DOWN].state = false;
                 
-              if(g_debug) client->println("<div>all up</div>");
+              //if(g_debug) client->println("<div>all up</div>");
             }
             else if(strvalue == "down")
             {
@@ -487,12 +490,13 @@ void process_shutter_query(EthernetClient* client, String query)
                   shutters[i].relays[ITEM_DOWN].state = true;
                   digitalWrite(shutters[i].relays[ITEM_UP].pin, RELAY_OPEN);
                   digitalWrite(shutters[i].relays[ITEM_DOWN].pin, RELAY_CLOSED);
+                  shutters[i].last_action_time_ms = inow;
                 }
                 
                 shutters[nbmaxitems-1].relays[ITEM_UP].state = false;
                 shutters[nbmaxitems-1].relays[ITEM_DOWN].state = true;
                 
-              if(g_debug)  client->println("<div>all down</div>");
+              //if(g_debug)  client->println("<div>all down</div>");
             }
           }//else
           
@@ -514,7 +518,8 @@ void process_shutter_query(EthernetClient* client, String query)
               shutters[iv].relays[ITEM_DOWN].state = false;
               digitalWrite(shutters[iv].relays[ITEM_DOWN].pin, RELAY_OPEN);
               digitalWrite(shutters[iv].relays[ITEM_UP].pin, RELAY_OPEN);
-              if(g_debug) client->println("<div>stop</div>");
+              shutters[iv].last_action_time_ms = inow;
+              //if(g_debug) client->println("<div>stop</div>");
           }
           else if(strvalue == "up")
           {
@@ -522,7 +527,8 @@ void process_shutter_query(EthernetClient* client, String query)
               shutters[iv].relays[ITEM_DOWN].state = false;
               digitalWrite(shutters[iv].relays[ITEM_DOWN].pin, RELAY_OPEN);
               digitalWrite(shutters[iv].relays[ITEM_UP].pin, RELAY_CLOSED);
-              if(g_debug) client->println("<div>up</div>");
+              shutters[iv].last_action_time_ms = inow;
+              //if(g_debug) client->println("<div>up</div>");
           }
           else if(strvalue == "down")
           {
@@ -530,7 +536,8 @@ void process_shutter_query(EthernetClient* client, String query)
               shutters[iv].relays[ITEM_DOWN].state = true;
               digitalWrite(shutters[iv].relays[ITEM_UP].pin, RELAY_OPEN);
               digitalWrite(shutters[iv].relays[ITEM_DOWN].pin, RELAY_CLOSED);
-              if(g_debug) client->println("<div>down</div>");
+              shutters[iv].last_action_time_ms = inow;
+              //if(g_debug) client->println("<div>down</div>");
           }
       }
       
