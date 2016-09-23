@@ -1,5 +1,6 @@
+
 ////////////////////////////////////////////////////////////////////////////
-// Rolling shutter management v0.3 (local, centralized and remote)
+// Rolling shutter management v0.4 (local, centralized and remote)
 // written by Pete (june 2016)
 //
 // !! USE AT YOUR OWN RISK !!
@@ -52,6 +53,7 @@
 #include <EthernetServer.h>
 #include <util.h>
 #include <WString.h>
+#include <EEPROM.h>
 
 //////////////////////////
 // This is how my relay works
@@ -77,7 +79,7 @@
   
   // manage dhcp disconnection
   #define DHCP_RENEW_TIMEOUT 43200000 //1000*3600*12
-  
+ 
 //////////////////////////
 // how many shutters do you have ?
 //////////////////////////
@@ -145,14 +147,27 @@ struct ROLLING_SHUTTER {
 //////////////////////////
 ROLLING_SHUTTER shutters[nbmaxitems];
 
-// global flag to ignore hardware buttons and only use webpage API
-boolean g_enable_buttons = true;
-boolean g_enable_centralized_buttons = true;
+
+  // EEPROM SETTINGS
+ #define CONFIG_VERSION "sv1"
+ #define CONFIG_START   32
+ struct StoreStruct {
+  // This is for mere detection if they are your settings
+  char version[4];
+  // global flag to ignore hardware buttons and only use webpage API
+  int enable_buttons;
+  int enable_centralized_buttons;
+} g_storage = { 
+  CONFIG_VERSION,
+  1,
+  1
+};
  
 //
 String bufstr = String(100); //string for fetching data from address
 unsigned long count = 0;
 int g_debug = 0;
+int g_enable_EEPROM = 0;
 
 // Enter a MAC address and IP address for your controller below.
 // The IP address will be dependent on your local network:
@@ -164,6 +179,53 @@ byte mac[] = {  0x90, 0xA2, 0xDA, 0x10, 0xAA, 0xD1 };
 EthernetServer server(80);
 unsigned long last_dhcp_renew = 0;
 
+
+////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////
+
+void loadConfig() {
+    if(!g_enable_EEPROM)
+      return;
+      
+  // To make sure there are settings, and they are YOURS!
+  // If nothing is found it will use the default settings.
+  if (EEPROM.read(CONFIG_START + 0) == CONFIG_VERSION[0] &&
+      EEPROM.read(CONFIG_START + 1) == CONFIG_VERSION[1] &&
+      EEPROM.read(CONFIG_START + 2) == CONFIG_VERSION[2])
+      {
+        for (unsigned int t=0; t<sizeof(g_storage); t++)
+          *((char*)&g_storage + t) = EEPROM.read(CONFIG_START + t);
+          Serial.println("config loaded from EEPROM");
+      }
+      else
+      {
+         // settings aren't valid! will overwrite with default settings
+        saveConfig();
+      }
+}
+
+void saveConfig() 
+{
+   if(!g_enable_EEPROM)
+      return;
+      
+  for (unsigned int t=0; t<sizeof(g_storage); t++)
+  {
+    EEPROM.write(CONFIG_START + t, *((char*)&g_storage + t));
+    
+      // and verifies the data
+    if (EEPROM.read(CONFIG_START + t) != *((char*)&g_storage + t))
+    {
+      // error writing to EEPROM
+      Serial.println("error while writing EEPROM");
+      return;
+    }
+  }
+    
+    Serial.println("config saved to EEPROM");
+}
+
+
 ////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////
 void setup ()
@@ -174,6 +236,8 @@ void setup ()
   }*/
   
   Serial.println("init");
+  
+   loadConfig();
   
   //init
   for(int i=0; i<nbmaxitems; i++)
@@ -246,6 +310,12 @@ void setup ()
    Serial.print("auto timeout : ");
    Serial.print(AUTO_STOP_TIMEOUT);
    Serial.println(" ms");
+   
+   Serial.print("enable buttons : ");
+   Serial.println(g_storage.enable_buttons);
+   
+    Serial.print("enable centralized button : ");
+   Serial.println(g_storage.enable_centralized_buttons);
   
    Serial.println("init server");
   Ethernet.begin(mac);
@@ -318,14 +388,14 @@ void print_html_status(EthernetClient* client)
 {
   client->print("<div>Buttons are ");
 
- if(g_enable_buttons)
+ if(g_storage.enable_buttons)
   client->print("Enabled  :  <a  href='#' onclick='SendAction(\"?enablebuttons=false\"); return false;' >Disable</a>");  
  else
   client->print("Disabled :  <a href='#' onclick='SendAction(\"?enablebuttons=true\"); return false;'  >Enable</a>");  
   client->println("</div>");
   
   client->print("<div>Centralized buttons ");
-  if(g_enable_centralized_buttons)
+  if(g_storage.enable_centralized_buttons)
     client->print("Enabled  :   <a  href='#' onclick='SendAction(\"?enablecentralizedbuttons=false\"); return false;' >Disable</a>");  
   else
     client->print("Disabled :   <a href='#' onclick='SendAction(\"?enablecentralizedbuttons=true\"); return false;'  >Enable</a>");
@@ -465,23 +535,27 @@ void process_shutter_query(EthernetClient* client, String query)
           {
              if(strvalue == "true")
              {            
-               g_enable_buttons= true;
+               g_storage.enable_buttons= 1;
              }
              else  if(strvalue == "false")
              {            
-               g_enable_buttons= false;
+               g_storage.enable_buttons= 0;
              }
+             
+              saveConfig();
           }
           else if(strname == "enablecentralizedbuttons")
           {
             if(strvalue == "true")
              {            
-               g_enable_centralized_buttons= true;
+               g_storage.enable_centralized_buttons= 1;
              }
              else  if(strvalue == "false")
              {            
-               g_enable_centralized_buttons= false;
+               g_storage.enable_centralized_buttons= 0;
              }
+             
+              saveConfig();
           }
           else if(strname == "all" || iv == nbmaxitems-1)
           {
@@ -783,7 +857,7 @@ void test_button(int index, int up_down)
         
   }
   
-  if(!g_enable_buttons)
+  if(!g_storage.enable_buttons)
   {
       return;
   }
@@ -868,8 +942,8 @@ test_general_button(int index, int up_down)
     return;
 
   int current_val =   digitalRead(shutters[index].buttons[up_down].pin);
-  int current_relay = shutters[index].relays[up_down].state ; //digitalRead(shutters[index].relays[up_down].pin);
-  int current_relay_op = shutters[index].relays[!up_down].state; //digitalRead(shutters[index].relays[!up_down].pin);
+  int current_relay = shutters[index].relays[up_down].state ? RELAY_CLOSED : RELAY_OPEN; //digitalRead(shutters[index].relays[up_down].pin);
+  int current_relay_op = shutters[index].relays[!up_down].state? RELAY_CLOSED : RELAY_OPEN; //digitalRead(shutters[index].relays[!up_down].pin);
   unsigned long inow = millis();
   
   // timeout management
@@ -893,7 +967,7 @@ test_general_button(int index, int up_down)
         
   }
   
-  if(!g_enable_centralized_buttons)
+  if(!g_storage.enable_centralized_buttons)
   {
       return;
   }
@@ -974,4 +1048,5 @@ void vr(int index)
    test_button(index, ITEM_UP);
    test_button(index, ITEM_DOWN);
 }
+
 
