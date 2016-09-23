@@ -1,6 +1,6 @@
 
 ////////////////////////////////////////////////////////////////////////////
-// Rolling shutter management v0.5 (local, centralized and remote)
+// Rolling shutter management v0.4 (local, centralized and remote)
 // written by Pete (june 2016)
 //
 // !! USE AT YOUR OWN RISK !!
@@ -408,7 +408,10 @@ void print_html_status(EthernetClient* client)
     client->print("Disabled :   <a href='#' onclick='SendAction(\"?enablecentralizedbuttons=true\"); return false;'  >Enable</a>");
   client->println("</div>");
   
-      client->println("<table><tr><td>shutter</td><td>action</td><td>state</td><td>button up</td><td>button down</td><td>relay up</td><td>relay down</td></tr>");
+      client->println("<table><tr><td>shutter</td><td>action</td><td>state</td>");
+      if(g_debug) client->println("<td>button up</td><td>button down</td><td>relay up</td><td>relay down</td>");
+      client->println("</tr>");
+      
       // output the value of each analog input pin
       for (int i = 0; i < nbmaxitems; i++) 
       {
@@ -466,38 +469,67 @@ void print_html_status(EthernetClient* client)
         {
             client->print("????");
         }
-        client->print("</td><td>(");
-        client->print(shutters[i].buttons[ITEM_UP].pin);
-        client->print(") ");
-        client->print(shutters[i].buttons[ITEM_UP].state);
-    
-        client->print("</td><td>(");
-        client->print(shutters[i].buttons[ITEM_DOWN].pin);
-        client->print(") ");
-        client->print(shutters[i].buttons[ITEM_DOWN].state);
         
-         client->print("</td><td>");
-        // if(shutters[i].relays[ITEM_UP].pin > 0)
-         {
-           client->print("(");
-           client->print(shutters[i].relays[ITEM_UP].pin);
-           client->print(") ");
-           client->print(shutters[i].relays[ITEM_UP].state);
-         }
-        
-        client->print("</td><td>");
-        //if(shutters[i].relays[ITEM_DOWN].pin > 0)
-         {
-           client->print("(");
-           client->print(shutters[i].relays[ITEM_DOWN].pin);
-           client->print(") ");
-           client->print(shutters[i].relays[ITEM_DOWN].state);
+        if(g_debug) 
+        {
+          client->print("</td><td>(");
+          client->print(shutters[i].buttons[ITEM_UP].pin);
+          client->print(") ");
+          client->print(shutters[i].buttons[ITEM_UP].state);
+      
+          client->print("</td><td>(");
+          client->print(shutters[i].buttons[ITEM_DOWN].pin);
+          client->print(") ");
+          client->print(shutters[i].buttons[ITEM_DOWN].state);
+          
+           client->print("</td><td>");
+          // if(shutters[i].relays[ITEM_UP].pin > 0)
+           {
+             client->print("(");
+             client->print(shutters[i].relays[ITEM_UP].pin);
+             client->print(") ");
+             client->print(shutters[i].relays[ITEM_UP].state);
+           }
+          
+          client->print("</td><td>");
+          //if(shutters[i].relays[ITEM_DOWN].pin > 0)
+           {
+             client->print("(");
+             client->print(shutters[i].relays[ITEM_DOWN].pin);
+             client->print(") ");
+             client->print(shutters[i].relays[ITEM_DOWN].state);
+          }
         }
         
         
        client->println("</td></tr>");
       }
       client->println("</table>");
+}
+
+
+////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////
+void
+ActivateRelay(int index, int up_down, int value)
+{
+   boolean previous_state = shutters[index].relays[up_down].state;
+   
+    /* Serial.print("pin  ");
+      Serial.print(shutters[index].relays[up_down].pin);
+      Serial.print(" -> ");
+      Serial.println(value);*/
+      
+   digitalWrite(shutters[index].relays[up_down].pin, value);
+   shutters[index].relays[up_down].state = (value == RELAY_CLOSED);
+   
+   if(previous_state != shutters[index].relays[up_down].state)
+   {   
+     trace_relay(index, up_down);
+     Serial.print(" set to ");
+     Serial.print(shutters[index].relays[up_down].state ? "CLOSED" : "OPEN" );
+     Serial.println("");
+   }
 }
 
 ////////////////////////////////////////////////////////////////
@@ -570,10 +602,9 @@ void process_shutter_query(EthernetClient* client, String query)
             {
                 for(int i = 0; i < nbshutters; i++)
                 {
-                  shutters[i].relays[ITEM_UP].state = false;
-                  shutters[i].relays[ITEM_DOWN].state = false;
-                  digitalWrite(shutters[i].relays[ITEM_DOWN].pin, RELAY_OPEN);
-                  digitalWrite(shutters[i].relays[ITEM_UP].pin, RELAY_OPEN);
+                  ActivateRelay(i, ITEM_DOWN, RELAY_OPEN);
+                  ActivateRelay(i, ITEM_UP, RELAY_OPEN);
+  
                   shutters[i].last_action_time_ms = inow;
                 }
                 shutters[nbmaxitems-1].relays[ITEM_UP].state = false;
@@ -586,12 +617,12 @@ void process_shutter_query(EthernetClient* client, String query)
             {
                 for(int i = 0; i < nbshutters; i++)
                 {
-                  shutters[i].relays[ITEM_UP].state = true;
-                  shutters[i].relays[ITEM_DOWN].state = false;
-                  digitalWrite(shutters[i].relays[ITEM_DOWN].pin, RELAY_OPEN);
-                  digitalWrite(shutters[i].relays[ITEM_UP].pin, RELAY_CLOSED);
+                  ActivateRelay(i, ITEM_DOWN, RELAY_OPEN);
+                  ActivateRelay(i, ITEM_UP, RELAY_CLOSED);
+                  
                   shutters[i].last_action_time_ms = inow;
                 }
+                
                 shutters[nbmaxitems-1].relays[ITEM_UP].state = true;
                 shutters[nbmaxitems-1].relays[ITEM_DOWN].state = false;
                 shutters[nbmaxitems-1].last_action_time_ms = inow;
@@ -602,10 +633,9 @@ void process_shutter_query(EthernetClient* client, String query)
             {
                 for(int i = 0; i < nbshutters; i++)
                 {
-                  shutters[i].relays[ITEM_UP].state = false;
-                  shutters[i].relays[ITEM_DOWN].state = true;
-                  digitalWrite(shutters[i].relays[ITEM_UP].pin, RELAY_OPEN);
-                  digitalWrite(shutters[i].relays[ITEM_DOWN].pin, RELAY_CLOSED);
+                  ActivateRelay(i, ITEM_UP, RELAY_OPEN);
+                  ActivateRelay(i, ITEM_DOWN, RELAY_CLOSED);
+                  
                   shutters[i].last_action_time_ms = inow;
                 }
                 
@@ -630,29 +660,26 @@ void process_shutter_query(EthernetClient* client, String query)
           }
             
           if(strvalue == "stop")
-          {
-              shutters[iv].relays[ITEM_UP].state = false;
-              shutters[iv].relays[ITEM_DOWN].state = false;
-              digitalWrite(shutters[iv].relays[ITEM_DOWN].pin, RELAY_OPEN);
-              digitalWrite(shutters[iv].relays[ITEM_UP].pin, RELAY_OPEN);
+          {             
+              ActivateRelay(iv, ITEM_DOWN, RELAY_OPEN);
+              ActivateRelay(iv, ITEM_UP, RELAY_OPEN);
+              
               shutters[iv].last_action_time_ms = inow;
               //if(g_debug) client->println("<div>stop</div>");
           }
           else if(strvalue == "up")
           {
-              shutters[iv].relays[ITEM_UP].state = true;
-              shutters[iv].relays[ITEM_DOWN].state = false;
-              digitalWrite(shutters[iv].relays[ITEM_DOWN].pin, RELAY_OPEN);
-              digitalWrite(shutters[iv].relays[ITEM_UP].pin, RELAY_CLOSED);
+              ActivateRelay(iv, ITEM_DOWN, RELAY_OPEN);
+              ActivateRelay(iv, ITEM_UP, RELAY_CLOSED);
+
               shutters[iv].last_action_time_ms = inow;
               //if(g_debug) client->println("<div>up</div>");
           }
           else if(strvalue == "down")
           {
-              shutters[iv].relays[ITEM_UP].state = false;
-              shutters[iv].relays[ITEM_DOWN].state = true;
-              digitalWrite(shutters[iv].relays[ITEM_UP].pin, RELAY_OPEN);
-              digitalWrite(shutters[iv].relays[ITEM_DOWN].pin, RELAY_CLOSED);
+              ActivateRelay(iv, ITEM_UP, RELAY_OPEN);
+              ActivateRelay(iv, ITEM_DOWN, RELAY_CLOSED);
+              
               shutters[iv].last_action_time_ms = inow;
               //if(g_debug) client->println("<div>down</div>");
           }
@@ -741,10 +768,7 @@ void manage_client()
           continue;
         }
 
-        
-        // Print it out for debugging
-        Serial.println(bufstr);
-        
+       
          if (bufstr.indexOf("GET / ") != -1) {
                 // send a standard http response header
                 client.println("HTTP/1.1 200 OK");
@@ -755,7 +779,13 @@ void manage_client()
                 //print_html_status(&client);
                 print_html_footer(&client);
          }
+        else if (bufstr.indexOf("GET /favicon.ico") != -1) {
+            client.println("HTTP/1.0 404 Not Found");
+          }
         else if (bufstr.indexOf("GET /") != -1) {
+          
+                // Print it out for debugging
+                //Serial.println(bufstr);
        
                 buflength = bufstr.length();
                 pos = bufstr.indexOf("/");
@@ -798,18 +828,6 @@ void manage_client()
 }
 
 
-////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////
-void 
-DW(int pin, int val)
-{
-     /* Serial.print("pin  ");
-      Serial.print(pin);
-      Serial.print(" -> ");
-      Serial.println(val);*/
-      
-      digitalWrite (pin, val);
-}
 
 ////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////
@@ -867,14 +885,8 @@ void test_button(int index, int up_down)
           unsigned long diff = millis_diff(inow, shutters[index].last_action_time_ms);
           
           if(diff  > (AUTO_STOP_TIMEOUT) )
-          {     
-            DW(shutters[index].relays[up_down].pin, RELAY_OPEN);
-            shutters[index].relays[up_down].state = false;
-            trace_relay(index, up_down);
-            Serial.print(" auto timeout (");
-            Serial.print(diff);
-            Serial.println("ms)  ");
-            
+          { 
+            ActivateRelay(index, up_down, RELAY_OPEN);
             return;
           }
         
@@ -923,24 +935,17 @@ void test_button(int index, int up_down)
       Serial.print(" pushed (");
       Serial.print(diff);
       Serial.println("ms)");
-      
-    shutters[index].relays[up_down].state = !(current_relay == RELAY_CLOSED);
-
-   // always disable opposite relay
-     // if(current_relay_op != RELAY_OPEN)
-    DW(shutters[index].relays[!up_down].pin, RELAY_OPEN);
-    shutters[index].relays[!up_down].state = false;
-         
-     next_relay_val = shutters[index].relays[up_down].state ? RELAY_CLOSED :  RELAY_OPEN;
-     if(current_relay != next_relay_val)
-        DW (shutters[index].relays[up_down].pin, next_relay_val);
-        
-     shutters[index].last_action_time_ms = inow;
      
-     trace_relay(index, up_down);
-     Serial.print(" set to ");
-     Serial.print(shutters[index].relays[up_down].state ? "CLOSED" : "OPEN" );
-     Serial.println("");
+   // always disable opposite relay
+     ActivateRelay(index, !up_down, RELAY_OPEN);
+     
+     bool bnext_state = !(current_relay == RELAY_CLOSED);
+     next_relay_val = bnext_state ? RELAY_CLOSED :  RELAY_OPEN;
+     
+     ActivateRelay(index, up_down, next_relay_val);
+     
+     shutters[index].last_action_time_ms = inow;
+
     }
     else
     {
