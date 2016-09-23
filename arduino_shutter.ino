@@ -1,6 +1,6 @@
 
 ////////////////////////////////////////////////////////////////////////////
-// Rolling shutter management v0.4 (local, centralized and remote)
+// Rolling shutter management v0.6 (local, centralized and remote)
 // written by Pete (june 2016)
 //
 // !! USE AT YOUR OWN RISK !!
@@ -365,9 +365,16 @@ void print_html_header(EthernetClient* client)
       client->println(" <STYLE type='text/css'>");
       client->println("* { margin:0 auto; padding:0; }");
       client->println("body { font-family:Tahoma,sans-serif,Verdana,Arial; color:black; font-size:14pt; }");
+      client->println(".container {padding: 10px;    margin:10px; text-align: center; }");
       client->println("table {border:1px solid black; border-collapse:collapse; padding: 10px;}");
-      client->println("a,a:hover,a:visited {color:black; }");
-      client->println("td {border: 1px solid black; padding: 7px; min-width:60px; }");
+      client->println("a, a:active, a:hover, a:visited {color:black;   text-decoration:none; }");
+      client->println("td {border: 1px solid black; padding: 7px; padding-top: 10px; min-width:60px; }");
+      client->println(".button {border: 1px solid black; background-color: #888; padding: 2px; }");
+      client->println(".button:hover, .button:active {color:white; background-color: #DDD; }");
+      
+      client->println(".options {text-align: center; border: 1px solid black; background-color: white; padding: 10px; margin-top:10px; max-width: 320px; }");
+      client->println(".options > div { padding-top: 10px; }");
+      
       client->println(" </STYLE>");
 
       client->println("<meta http-equiv='Content-type' content='text/html; charset=UTF-8' />");
@@ -375,16 +382,22 @@ void print_html_header(EthernetClient* client)
       client->println("<meta name='viewport' content='width=320, initial-scale=1.0, maximum-scale=1.0, user-scalable=0' />");
       client->println("<title>Shutters</title>");
       client->println("</head>");
+      
+      
       client->println("<body>");
       client->println("<script>");
       client->println("function SendAction(url) {  var xhttp = new XMLHttpRequest(); xhttp.onreadystatechange = function() {  if (this.readyState == 4 && this.status == 200) { window.location.reload(false);  } }; xhttp.open('GET', url, true); xhttp.send(); } ");
       client->println("</script>");
+      
+      client->println("<div class='container'>");
+      
 }
 
 ////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////
 void print_html_footer(EthernetClient* client)
 {
+       client->println("</div>");  // container
        client->println("</body>");
        client->println("</html>");
 }
@@ -393,20 +406,7 @@ void print_html_footer(EthernetClient* client)
 ////////////////////////////////////////////////////////////////
 void print_html_status(EthernetClient* client)
 {
-  client->print("<div>Buttons are ");
-
- if(g_storage.enable_buttons)
-  client->print("Enabled  :  <a  href='#' onclick='SendAction(\"?enablebuttons=false\"); return false;' >Disable</a>");  
- else
-  client->print("Disabled :  <a href='#' onclick='SendAction(\"?enablebuttons=true\"); return false;'  >Enable</a>");  
-  client->println("</div>");
   
-  client->print("<div>Centralized buttons ");
-  if(g_storage.enable_centralized_buttons)
-    client->print("Enabled  :   <a  href='#' onclick='SendAction(\"?enablecentralizedbuttons=false\"); return false;' >Disable</a>");  
-  else
-    client->print("Disabled :   <a href='#' onclick='SendAction(\"?enablecentralizedbuttons=true\"); return false;'  >Enable</a>");
-  client->println("</div>");
   
       client->println("<table><tr><td>shutter</td><td>action</td><td>state</td>");
       if(g_debug) client->println("<td>button up</td><td>button down</td><td>relay up</td><td>relay down</td>");
@@ -434,23 +434,23 @@ void print_html_status(EthernetClient* client)
             client->print(i+1);
             client->print("=down'>DOWN</a>");*/
             
-            client->print("<a href='#' onclick='SendAction(\"?");
+            client->print("<span class='button'><a href='#' onclick='SendAction(\"?");
             client->print(i+1);
             client->print("=up");
             client->print("\"); return false;'");
-            client->print(">UP</a>");
+            client->print(">UP</a></span>");
             client->print(" ");
-            client->print("<a href='#' onclick='SendAction(\"?");
+            client->print("<span class='button'><a href='#' onclick='SendAction(\"?");
             client->print(i+1);
             client->print("=stop");
             client->print("\"); return false;'");
-            client->print(">STOP</a>");
+            client->print(">STOP</a></span>");
             client->print(" ");
-            client->print("<a href='#' onclick='SendAction(\"?");
+            client->print("<span class='button'><a href='#' onclick='SendAction(\"?");
             client->print(i+1);
             client->print("=down");
             client->print("\"); return false;'");
-            client->print(">DOWN</a>");
+            client->print(">DOWN</a></span>");
  
         client->println("</td><td>");
         if(sread_up  && !sread_down)
@@ -505,6 +505,26 @@ void print_html_status(EthernetClient* client)
        client->println("</td></tr>");
       }
       client->println("</table>");
+      
+      
+      
+ client->print("<div class='options'>");
+  client->print("<div>Buttons are ");
+
+ if(g_storage.enable_buttons)
+  client->print("Enabled  : <span class='button'><a  href='#' onclick='SendAction(\"?enablebuttons=false\"); return false;' >Disable</a></span>");  
+ else
+  client->print("Disabled :  <span class='button'><a href='#' onclick='SendAction(\"?enablebuttons=true\"); return false;'  >Enable</a></span>");  
+  client->println("</div>");
+  
+  client->print("<div>Centralized buttons ");
+  if(g_storage.enable_centralized_buttons)
+    client->print("Enabled  :   <span class='button'><a  href='#' onclick='SendAction(\"?enablecentralizedbuttons=false\"); return false;' >Disable</a></span>");  
+  else
+    client->print("Disabled :   <span class='button'><a href='#' onclick='SendAction(\"?enablecentralizedbuttons=true\"); return false;'  >Enable</a></span>");
+  client->println("</div>");
+  
+  client->println("</div>"); // options
 }
 
 
