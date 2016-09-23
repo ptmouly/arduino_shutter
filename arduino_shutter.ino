@@ -1,5 +1,5 @@
 ////////////////////////////////////////////////////////////////////////////
-// Rolling shutter management v0.2 (local, centralized and remote)
+// Rolling shutter management v0.3 (local, centralized and remote)
 // written by Pete (june 2016)
 //
 // !! USE AT YOUR OWN RISK !!
@@ -73,7 +73,10 @@
   #define MIN_TIME_ACTION_MS 300
   
   // put back relays to stop state for the shutter, set to 0 to disable
-  #define AUTO_STOP_TIMEOUT  (1000*60*2) 
+  #define AUTO_STOP_TIMEOUT  60000 
+  
+  // manage dhcp disconnection
+  #define DHCP_RENEW_TIMEOUT 43200000 //1000*3600*12
   
 //////////////////////////
 // how many shutters do you have ?
@@ -112,7 +115,6 @@ struct ITEM
 { 
   int pin;
   boolean state;
-  boolean last_state;
 };
 
 //////////////////////////
@@ -178,19 +180,15 @@ void setup ()
   {
     shutters[i].buttons[ITEM_UP].pin = pushButtonUp[i];
     shutters[i].buttons[ITEM_UP].state = false;
-    shutters[i].buttons[ITEM_UP].last_state = false;
     
     shutters[i].buttons[ITEM_DOWN].pin = pushButtonDown[i];
     shutters[i].buttons[ITEM_DOWN].state = false;
-    shutters[i].buttons[ITEM_DOWN].last_state = false;
     
     shutters[i].relays[ITEM_UP].pin = ledUp[i];
     shutters[i].relays[ITEM_UP].state = false;
-    shutters[i].relays[ITEM_UP].last_state = false;
     
     shutters[i].relays[ITEM_DOWN].pin = ledDown[i];
     shutters[i].relays[ITEM_DOWN].state = false;
-    shutters[i].relays[ITEM_DOWN].last_state = false;
     
     shutters[i].last_action_button = -1;
     shutters[i].strname = names[i];
@@ -245,6 +243,10 @@ void setup ()
     }
   }
   
+   Serial.print("auto timeout : ");
+   Serial.print(AUTO_STOP_TIMEOUT);
+   Serial.println(" ms");
+  
    Serial.println("init server");
   Ethernet.begin(mac);
   server.begin();
@@ -267,11 +269,9 @@ void loop ()
    {
          vr(i);
    }
- 
-  if(g_enable_centralized_buttons)
-  {
-     vrall(nbmaxitems-1); // -> VRALL ALL
-  }
+
+   vrall(nbmaxitems-1); // -> VRALL ALL
+  
   //delay(100);
   delay(10);
 }
@@ -282,6 +282,9 @@ void loop ()
 void print_html_header(EthernetClient* client)
 {
       client->println("<!DOCTYPE HTML>");
+      client->println("<html>");
+      client->println("<head>");
+      
       client->println(" <STYLE type='text/css'>");
       client->println("* { margin:0 auto; padding:0; }");
       client->println("body { font-family:Tahoma,sans-serif,Verdana,Arial; color:black; font-size:14pt; }");
@@ -289,13 +292,16 @@ void print_html_header(EthernetClient* client)
       client->println("a,a:hover,a:visited {color:black; }");
       client->println("td {border: 1px solid black; padding: 7px; min-width:60px; }");
       client->println(" </STYLE>");
-      client->println("<html>");
-      client->println("<head>");
+
       client->println("<meta http-equiv='Content-type' content='text/html; charset=UTF-8' />");
+      client->println("<meta http-equiv='refresh' content='30' />");
       client->println("<meta name='viewport' content='width=320, initial-scale=1.0, maximum-scale=1.0, user-scalable=0' />");
       client->println("<title>Shutters</title>");
       client->println("</head>");
       client->println("<body>");
+      client->println("<script>");
+      client->println("function SendAction(url) {  var xhttp = new XMLHttpRequest(); xhttp.onreadystatechange = function() {  if (this.readyState == 4 && this.status == 200) { window.location.reload(false);  } }; xhttp.open('GET', url, true); xhttp.send(); } ");
+      client->println("</script>");
 }
 
 ////////////////////////////////////////////////////////////////
@@ -310,19 +316,19 @@ void print_html_footer(EthernetClient* client)
 ////////////////////////////////////////////////////////////////
 void print_html_status(EthernetClient* client)
 {
-  client->print("<div>Buttons: ");
+  client->print("<div>Buttons are ");
 
  if(g_enable_buttons)
-  client->print(" <a href='?enablebuttons=false'>Disabled</a>");
+  client->print("Enabled  :  <a  href='#' onclick='SendAction(\"?enablebuttons=false\"); return false;' >Disable</a>");  
  else
-  client->print(" <a href='?enablebuttons=true'>Enabled</a>");
-  
+  client->print("Disabled :  <a href='#' onclick='SendAction(\"?enablebuttons=true\"); return false;'  >Enable</a>");  
   client->println("</div>");
-   client->print("<div>Centralized buttons: ");
+  
+  client->print("<div>Centralized buttons ");
   if(g_enable_centralized_buttons)
-    client->print(" <a href='?enablecentralizedbuttons=false'>Disabled</a>");
+    client->print("Enabled  :   <a  href='#' onclick='SendAction(\"?enablecentralizedbuttons=false\"); return false;' >Disable</a>");  
   else
-    client->print(" <a href='?enablecentralizedbuttons=true'>Enabled</a>");
+    client->print("Disabled :   <a href='#' onclick='SendAction(\"?enablecentralizedbuttons=true\"); return false;'  >Enable</a>");
   client->println("</div>");
   
       client->println("<table><tr><td>shutter</td><td>action</td><td>state</td><td>button up</td><td>button down</td><td>relay up</td><td>relay down</td></tr>");
@@ -337,20 +343,39 @@ void print_html_status(EthernetClient* client)
         client->println("<tr><td>");
         client->print(shutters[i].strname);
 
-     client->print("</td><td>");
-         client->print("<a href='?");
-            client->print(i+1);
-            client->print("=up'>UP</a>");
+         client->print("</td><td>");
+         /*client->print("<a href='?");
+         client->print(i+1);
+         client->print("=up'>UP</a>");
          client->print(" <a href='?");
             client->print(i+1);
             client->print("=stop'>STOP</a>");
             client->print(" <a href='?");
             client->print(i+1);
-            client->print("=down'>DOWN</a>");
+            client->print("=down'>DOWN</a>");*/
+            
+            client->print("<a href='#' onclick='SendAction(\"?");
+            client->print(i+1);
+            client->print("=up");
+            client->print("\"); return false;'");
+            client->print(">UP</a>");
+            client->print(" ");
+            client->print("<a href='#' onclick='SendAction(\"?");
+            client->print(i+1);
+            client->print("=stop");
+            client->print("\"); return false;'");
+            client->print(">STOP</a>");
+            client->print(" ");
+            client->print("<a href='#' onclick='SendAction(\"?");
+            client->print(i+1);
+            client->print("=down");
+            client->print("\"); return false;'");
+            client->print(">DOWN</a>");
+ 
         client->println("</td><td>");
         if(sread_up  && !sread_down)
         {
-            client->print("UP");
+            client->print("UP ");
         }
         else if(!sread_up && sread_down)
         {
@@ -374,15 +399,23 @@ void print_html_status(EthernetClient* client)
         client->print(") ");
         client->print(shutters[i].buttons[ITEM_DOWN].state);
         
-         client->print("</td><td>(");
-        client->print(shutters[i].relays[ITEM_UP].pin);
-        client->print(") ");
-        client->print(shutters[i].relays[ITEM_UP].state);
+         client->print("</td><td>");
+         if(shutters[i].relays[ITEM_UP].pin > 0)
+         {
+           client->print("(");
+           client->print(shutters[i].relays[ITEM_UP].pin);
+           client->print(") ");
+           client->print(shutters[i].relays[ITEM_UP].state);
+         }
         
-        client->print("</td><td>(");
-        client->print(shutters[i].relays[ITEM_DOWN].pin);
-        client->print(") ");
-        client->print(shutters[i].relays[ITEM_DOWN].state);
+        client->print("</td><td>");
+        if(shutters[i].relays[ITEM_DOWN].pin > 0)
+         {
+           client->print("(");
+           client->print(shutters[i].relays[ITEM_DOWN].pin);
+           client->print(") ");
+           client->print(shutters[i].relays[ITEM_DOWN].state);
+        }
         
         
        client->println("</td></tr>");
@@ -569,13 +602,27 @@ void process_action(EthernetClient* client, String action, String query)
 
 ////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////
+unsigned long millis_diff(unsigned long inow, unsigned long iref)
+{
+  if(inow >= iref)
+  {
+     return inow - iref;
+  }
+  
+  return ((unsigned long)(-1) - iref) + inow;
+}
+
+////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////
 void manage_client()
 {
+  unsigned long now = millis();
+  unsigned long diff = millis_diff(now, last_dhcp_renew);
   
-  if(millis() - last_dhcp_renew > (1000*60*60*24))
+  if( diff > (DHCP_RENEW_TIMEOUT) )
   {
        Ethernet.maintain();
-       last_dhcp_renew = millis();
+       last_dhcp_renew =  now;
   }
    // listen for incoming clients
   EthernetClient client = server.available();
@@ -625,13 +672,7 @@ void manage_client()
                 print_html_footer(&client);
          }
         else if (bufstr.indexOf("GET /") != -1) {
-                
-                // send a standard http response header
-                client.println("HTTP/1.1 200 OK");
-                client.println("Content-Type: text/html");
-                client.println(); // empty line
-                 print_html_header(&client);
-                
+       
                 buflength = bufstr.length();
                 pos = bufstr.indexOf("/");
                 pos2 = bufstr.indexOf("?", pos+1);
@@ -641,27 +682,24 @@ void manage_client()
                    pos2 = bufstr.indexOf(" ", pos+1);
                    qs = false;
                 }
-                action_str = bufstr.substring(pos, pos2);
-                
-                /*client.print("URL: ");
-                client.print(action_str);*/
-                
+                action_str = bufstr.substring(pos, pos2);            
                 qs_str= "";
                 if(qs)
                 {
                   pos = bufstr.indexOf(" ", pos2+1);
-                  
                   qs_str = bufstr.substring(pos2+1, pos);
                   
-                 /* client.print("<br>QueryString: ");
-                  client.print(qs_str);
-                  client.print("<br>");*/
                 }
+
+                  // send a standard http response header
+                  client.println("HTTP/1.1 200 OK");
+                  client.println("Content-Type: text/html");
+                  client.println(); // empty line
+                  print_html_header(&client);
+                  process_action(&client, action_str, qs_str);
+                  print_html_status(&client);
+                  print_html_footer(&client);
                 
-                process_action(&client, action_str, qs_str);
-                
-                print_html_status(&client);
-                print_html_footer(&client);
            }
        
          break;
@@ -725,20 +763,24 @@ void test_button(int index, int up_down)
   unsigned long inow = millis();
   
   // timeout management
-  if(   AUTO_STOP_TIMEOUT != 0 
-     && current_relay == RELAY_CLOSED 
-     && (inow - shutters[index].last_action_time_ms) > AUTO_STOP_TIMEOUT)
+  if(   ( (AUTO_STOP_TIMEOUT) > 0 )
+     && (current_relay == RELAY_CLOSED )
+     )
   {
-          unsigned long diff = inow - shutters[index].last_action_time_ms;
+          unsigned long diff = millis_diff(inow, shutters[index].last_action_time_ms);
           
-          DW(shutters[index].relays[up_down].pin, RELAY_OPEN);
-          shutters[index].relays[up_down].state = false;
-          trace_button(index, up_down);
-          Serial.print(" auto timeout (");
-          Serial.print(diff);
-          Serial.println("ms)  ");
-          
-          return;
+          if(diff  > (AUTO_STOP_TIMEOUT) )
+          {     
+            DW(shutters[index].relays[up_down].pin, RELAY_OPEN);
+            shutters[index].relays[up_down].state = false;
+            trace_button(index, up_down);
+            Serial.print(" auto timeout (");
+            Serial.print(diff);
+            Serial.println("ms)  ");
+            
+            return;
+          }
+        
   }
   
   if(!g_enable_buttons)
@@ -749,16 +791,13 @@ void test_button(int index, int up_down)
   if (current_val == BUTTON_PRESSED)
   {
 
-    if (shutters[index].last_action_button == -1 // first time (last_state is not correct)
+    if (shutters[index].last_action_button == -1 // first time (state is not correct)
         || shutters[index].last_action_button == (!up_down) // previous other button ?
-        || !shutters[index].buttons[up_down].last_state)
+        || !shutters[index].buttons[up_down].state)
     {       
       
-      unsigned long diff = 0; 
+      unsigned long diff = millis_diff(inow, shutters[index].last_action_time_ms);
       
-      if(inow >= shutters[index].last_action_time_ms)
-      {
-        diff = inow - shutters[index].last_action_time_ms;
         if(diff < MIN_TIME_ACTION_MS)
         {
            /* trace_button(index, up_down);
@@ -768,12 +807,12 @@ void test_button(int index, int up_down)
   
            /* Serial.print("last_action ");          
             Serial.print(shutters[index].last_action_button);    
-            Serial.print(" last_state ");
-            Serial.println(shutters[index].buttons[up_down].last_state);
+            Serial.print(" state ");
+            Serial.println(shutters[index].buttons[up_down].state);
       */
            return;
         }
-      }
+      
     
       trace_button(index, up_down);
       Serial.print(" pushed (");
@@ -800,20 +839,17 @@ void test_button(int index, int up_down)
 
     shutters[index].buttons[up_down].state = true;
     shutters[index].last_action_button = up_down;
-    shutters[index].buttons[up_down].last_state = true;
   }
   else if (current_val == BUTTON_RELEASED)
   {
-    shutters[index].buttons[up_down].state = false;
-   
-     if( shutters[index].buttons[up_down].last_state)
+     if( shutters[index].buttons[up_down].state)
      {
         trace_button(index, up_down);
         Serial.println(" RELEASED");
       }
       
        //
-    shutters[index].buttons[up_down].last_state = false;
+    shutters[index].buttons[up_down].state = false;
   } 
   else
   {
@@ -832,24 +868,47 @@ test_general_button(int index, int up_down)
     return;
 
   int current_val =   digitalRead(shutters[index].buttons[up_down].pin);
-  int current_relay = digitalRead(shutters[index].relays[up_down].pin);
-  int current_relay_op = digitalRead(shutters[index].relays[!up_down].pin);
+  int current_relay = shutters[index].relays[up_down].state ; //digitalRead(shutters[index].relays[up_down].pin);
+  int current_relay_op = shutters[index].relays[!up_down].state; //digitalRead(shutters[index].relays[!up_down].pin);
   unsigned long inow = millis();
+  
+  // timeout management
+  if(   ( (AUTO_STOP_TIMEOUT) > 0 )
+     && (current_relay == RELAY_CLOSED )
+     )
+  {
+          unsigned long diff = millis_diff(inow, shutters[index].last_action_time_ms);
+          
+          if(diff  > (AUTO_STOP_TIMEOUT) )
+          {     
+            shutters[index].relays[up_down].state = false;
+            shutters[index].relays[!up_down].state = false;
+            trace_button(index, up_down);
+            Serial.print(" auto timeout (");
+            Serial.print(diff);
+            Serial.println("ms)  ");
+            
+            return;
+          }
+        
+  }
+  
+  if(!g_enable_centralized_buttons)
+  {
+      return;
+  }
   
   if (current_val == BUTTON_PRESSED)
   {
 
     if (shutters[index].last_action_button == -1 
     ||  shutters[index].last_action_button == (!up_down)
-    || (!shutters[index].buttons[up_down].last_state))
+    || (!shutters[index].buttons[up_down].state))
     {
       
       
-    unsigned long diff = 0; 
-  
-    if(inow >= shutters[index].last_action_time_ms)
-    {
-      diff = inow - shutters[index].last_action_time_ms;
+    unsigned long diff = millis_diff(inow, shutters[index].last_action_time_ms);
+
       if(diff < MIN_TIME_ACTION_MS)
       {
           trace_button(index, up_down);
@@ -859,7 +918,7 @@ test_general_button(int index, int up_down)
     
          return;
       }
-    }
+    
     
       trace_button(index, up_down);
       Serial.print(" pushed (");
@@ -871,7 +930,6 @@ test_general_button(int index, int up_down)
       shutters[index].relays[up_down].state = !shutters[index].relays[up_down].state;
       shutters[index].relays[!up_down].state = false;
       
-      shutters[index].buttons[up_down].last_state = true;
       for(int i=0; i<nbshutters; i++)
       {     
         shutters[i].relays[up_down].state = shutters[index].relays[up_down].state;
@@ -888,15 +946,13 @@ test_general_button(int index, int up_down)
   }
   else if (current_val == BUTTON_RELEASED)
   {
-     shutters[index].buttons[up_down].state = false;
-   
-     if( shutters[index].buttons[up_down].last_state)
+     if( shutters[index].buttons[up_down].state)
      {
         trace_button(index, up_down);
         Serial.println(" RELEASED");
       }
       
-    shutters[index].buttons[up_down].last_state = false;
+    shutters[index].buttons[up_down].state = false;
   }
   
 }
