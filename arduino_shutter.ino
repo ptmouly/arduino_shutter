@@ -49,9 +49,9 @@
 #include <SPI.h>
 #include <Dhcp.h>
 #include <Dns.h>
-#include <Ethernet2.h>
+#include <Ethernet.h>
 #include <EthernetServer.h>
-#include <util.h>
+//#include <util.h>
 #include <WString.h>
 #include <EEPROM.h>
 
@@ -178,6 +178,40 @@ byte mac[] = {  0x90, 0xA2, 0xDA, 0x10, 0xAA, 0xD1 };
 // (port 80 is default for HTTP):
 EthernetServer server(80);
 unsigned long last_dhcp_renew = 0;
+
+
+
+////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////
+void trace_item(int index, int up_down, bool button)
+{
+      Serial.print("[");
+      char tbs[16];
+      sprintf(tbs, "%05d", count);
+      Serial.print(tbs);
+      Serial.print("]");
+      Serial.print(button ? " button " : " relay  ");
+      sprintf(tbs, "%02d", index);
+      Serial.print(index);
+      Serial.print(":");
+      Serial.print(up_down == ITEM_UP ? "UP  " : "DOWN");
+      Serial.print(" (");
+      sprintf(tbs, "%02d", button ? shutters[index].buttons[up_down].pin : shutters[index].relays[up_down].pin);
+      Serial.print(tbs);
+      Serial.print(")");
+      count++;
+}
+
+void trace_button(int index, int up_down)
+{
+      trace_item(index, up_down, true);
+}
+
+void trace_relay(int index, int up_down)
+{
+      trace_item(index, up_down, false);
+}
+
 
 
 ////////////////////////////////////////////////////////////////
@@ -334,24 +368,6 @@ void setup ()
   Serial.println("-- init done --");
 }
 
-////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////
-void loop ()
-{
-   manage_client();
-//    Serial.println("----------");
-
-   
-   for(int i=0; i<nbshutters; i++)
-   {
-         vr(i);
-   }
-
-   vrall(nbmaxitems-1); // -> VRALL ALL
-  
-  //delay(100);
-  delay(10);
-}
 
 
 ////////////////////////////////////////////////////////////////
@@ -799,8 +815,12 @@ void manage_client()
                 //print_html_status(&client);
                 print_html_footer(&client);
          }
-        else if (bufstr.indexOf("GET /favicon.ico") != -1) {
-            client.println("HTTP/1.0 404 Not Found");
+          else if (bufstr.indexOf("GET /favicon.ico") != -1) {
+             client.println("HTTP/1.0 404 Not Found");
+          }
+          else if (bufstr.indexOf("GET /robots.txt") != -1) { 
+          
+             client.println("HTTP/1.0 404 Not Found");
           }
         else if (bufstr.indexOf("GET /") != -1) {
           
@@ -846,43 +866,6 @@ void manage_client()
    // Serial.println("client disconnected");
   }
 }
-
-
-
-////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////
-void
-trace_item(int index, int up_down, bool button)
-{
-      Serial.print("[");
-      char tbs[16];
-      sprintf(tbs, "%05d", count);
-      Serial.print(tbs);
-      Serial.print("]");
-      Serial.print(button ? " button " : " relay  ");
-      sprintf(tbs, "%02d", index);
-      Serial.print(index);
-      Serial.print(":");
-      Serial.print(up_down == ITEM_UP ? "UP  " : "DOWN");
-      Serial.print(" (");
-      sprintf(tbs, "%02d", button ? shutters[index].buttons[up_down].pin : shutters[index].relays[up_down].pin);
-      Serial.print(tbs);
-      Serial.print(")");
-      count++;
-}
-
-void
-trace_button(int index, int up_down)
-{
-      trace_item(index, up_down, true);
-}
-
-void
-trace_relay(int index, int up_down)
-{
-      trace_item(index, up_down, false);
-}
-
 
 ////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////
@@ -1112,3 +1095,21 @@ void vr(int index)
 }
 
 
+////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////
+void loop ()
+{
+   manage_client();
+//    Serial.println("----------");
+
+   
+   for(int i=0; i<nbshutters; i++)
+   {
+         vr(i);
+   }
+
+   vrall(nbmaxitems-1); // -> VRALL ALL
+  
+  //delay(100);
+  delay(10);
+}
