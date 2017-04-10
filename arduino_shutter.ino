@@ -282,6 +282,7 @@ void setup ()
   //init
   for(int i=0; i<nbmaxitems; i++)
   {
+    delay(100); // wait for a second for stability
     shutters[i].buttons[ITEM_UP].pin = pushButtonUp[i];
     shutters[i].buttons[ITEM_UP].state = false;
     
@@ -320,14 +321,14 @@ void setup ()
       sprintf(tbs, "(%02d),", shutters[i].buttons[ITEM_UP].pin);
       Serial.print(tbs);
       
-      delay(10);
+      delay(100);
       
       pinMode (shutters[i].buttons[ITEM_DOWN].pin, INPUT);
      
       Serial.print(" BUTTON_DOWN ");
       sprintf(tbs, "(%02d),", shutters[i].buttons[ITEM_DOWN].pin);
       Serial.print(tbs);
-      delay(10);
+      delay(100);
     }
     
     if(i != nbshutters && shutters[i].relays[ITEM_UP].pin > 0)
@@ -337,7 +338,7 @@ void setup ()
       Serial.print(" RELAY_UP ");
       sprintf(tbs, "(%02d),", shutters[i].relays[ITEM_UP].pin);
       Serial.print(tbs);
-      delay(10);
+      delay(100);
       
       pinMode (shutters[i].relays[ITEM_DOWN].pin, OUTPUT);
       digitalWrite(shutters[i].relays[ITEM_DOWN].pin, RELAY_OPEN);
@@ -346,7 +347,7 @@ void setup ()
       sprintf(tbs, "(%02d),", shutters[i].relays[ITEM_DOWN].pin);
       Serial.print(tbs);
       
-      delay(10);
+      delay(100);
     }
     
     Serial.println("");
@@ -864,7 +865,7 @@ void manage_client()
       }
     }
     // give the web browser time to receive the data
-    delay(1);
+    delay(100);
     // close the connection:
     client.stop();
    // Serial.println("client disconnected");
@@ -1115,5 +1116,5 @@ void loop ()
    vrall(nbmaxitems-1); // -> VRALL ALL
   
   //delay(100);
-  delay(10);
+  delay(100);
 }
