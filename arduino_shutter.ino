@@ -94,19 +94,23 @@ const int nbshutters = 4;
 // ledUp and ledDown are for relays and pushButtonUp/pushButtonDown for buttons 
 // This is a [4 x nbmaxitems] matrix.
 // nbshutters columns should be filled, plus the last column for the centralized buttons
-int        ledUp[] =   {30, 32, 34, 36,  38,  40,  42,  44,  46,   0,  0 };
-int        ledDown[] = {31, 33, 35, 37,  39,  41,  43,  45,  47,   0,  0 };
-int pushButtonUp[] =   { 5,  8, 14, 16,  18,  20,  22,  24,  26,   0,  48 };
-int pushButtonDown[] = { 7,  9, 15, 17,  19,  21,  23,  25,  27,   0,  49 };
+int        ledUp[] =   {30, 32, 34, 36,  38,  40,  42,  44,  46,  48,  0 };
+int        ledDown[] = {31, 33, 35, 37,  39,  41,  43,  45,  47,  49,  0 };
+int pushButtonUp[] =   { 6,  8, 12, 14,  16,  18,  20,  22,  24,  26,  28 };
+int pushButtonDown[] = { 7,  9, 13, 15,  17,  19,  21,  23,  25,  27,  29 };
 
 // you can give a name here that will be displayed on the webpage
 const char* names[] = { 
-                        "Salon C",  "Bureau", 
-                        "Ch invites", 
-                        "Ch Parents G", "Ch Parents D", 
-                        "Ch enfants G", "Ch enfants D", 
-                        "Salon G", "Salon D", 
-                        "", 
+                        "Parents 1",
+                        "Parents 2", 
+                        "Bath", 
+                        "Enfant 2,2",
+                        "Enfant 2,1", 
+                        "Enfant 1",
+                        "Salon door", 
+                        "Salon balcony",
+                        "Salon living", 
+                        "Dinig", 
                         "General" }; 
 
 
