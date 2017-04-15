@@ -75,7 +75,7 @@
   #define MIN_TIME_ACTION_MS 300
   
   // put back relays to stop state for the shutter, set to 0 to disable
-  #define AUTO_STOP_TIMEOUT  60000 
+  #define AUTO_STOP_TIMEOUT  65000 
   
   // manage dhcp disconnection
   #define DHCP_RENEW_TIMEOUT 43200000 //1000*3600*12
@@ -84,7 +84,7 @@
 // how many shutters do you have ?
 //////////////////////////
 const int nbmaxitems = 11;
-const int nbshutters = 4;
+const int nbshutters = 10;
 
 /////////////////////////
 // Connected pins on your arduino
@@ -94,24 +94,25 @@ const int nbshutters = 4;
 // ledUp and ledDown are for relays and pushButtonUp/pushButtonDown for buttons 
 // This is a [4 x nbmaxitems] matrix.
 // nbshutters columns should be filled, plus the last column for the centralized buttons
-int        ledUp[] =   {30, 32, 34, 36,  38,  40,  42,  44,  46,  48,  0 };
-int        ledDown[] = {31, 33, 35, 37,  39,  41,  43,  45,  47,  49,  0 };
-int pushButtonUp[] =   { 6,  8, 12, 14,  16,  18,  20,  22,  24,  26,  28 };
-int pushButtonDown[] = { 7,  9, 13, 15,  17,  19,  21,  23,  25,  27,  29 };
+int        ledUp[] =   {30, 32, 34, 36,  38,  40,  42,  44,  46,   48,    0 };
+int        ledDown[] = {31, 33, 35, 37,  39,  41,  43,  45,  47,   49,    0 };
+int pushButtonUp[] =   { 2,  5,  8, 11,  14,  16,  18,  22,  24,   26,   28 };
+int pushButtonDown[] = { 3,  7,  9, 12,  15,  17,  19,  23,  25,   27,   29 };
+
 
 // you can give a name here that will be displayed on the webpage
 const char* names[] = { 
-                        "Parents 1",
-                        "Parents 2", 
-                        "Bath", 
-                        "Enfant 2,2",
-                        "Enfant 2,1", 
-                        "Enfant 1",
-                        "Salon door", 
-                        "Salon balcony",
-                        "Salon living", 
-                        "Dinig", 
-                        "General" }; 
+                        "( 0) Parents 1",
+                        "( 1) Parents 2", 
+                        "( 2) Bath", 
+                        "( 3) Enfant 2,2",
+                        "( 4) Enfant 2,1", 
+                        "( 5) Enfant 1",
+                        "( 6) Salon door", 
+                        "( 7) Salon balcony",
+                        "( 8) Salon living", 
+                        "( 9) Dinig", 
+                        "(10) General" };
 
 
 //////////////////////////
@@ -161,10 +162,12 @@ ROLLING_SHUTTER shutters[nbmaxitems];
   // global flag to ignore hardware buttons and only use webpage API
   int enable_buttons;
   int enable_centralized_buttons;
+  int enable_ethernet;
 } g_storage = { 
   CONFIG_VERSION,
   1,
-  1
+  1,
+  0,
 };
  
 //
@@ -321,14 +324,14 @@ void setup ()
       sprintf(tbs, "(%02d),", shutters[i].buttons[ITEM_UP].pin);
       Serial.print(tbs);
       
-      delay(100);
+      delay(100); // wait for a second for stability
       
       pinMode (shutters[i].buttons[ITEM_DOWN].pin, INPUT);
      
       Serial.print(" BUTTON_DOWN ");
       sprintf(tbs, "(%02d),", shutters[i].buttons[ITEM_DOWN].pin);
       Serial.print(tbs);
-      delay(100);
+      delay(100); // wait for a second for stability
     }
     
     if(i != nbshutters && shutters[i].relays[ITEM_UP].pin > 0)
@@ -338,7 +341,7 @@ void setup ()
       Serial.print(" RELAY_UP ");
       sprintf(tbs, "(%02d),", shutters[i].relays[ITEM_UP].pin);
       Serial.print(tbs);
-      delay(100);
+      delay(100); // wait for a second for stability
       
       pinMode (shutters[i].relays[ITEM_DOWN].pin, OUTPUT);
       digitalWrite(shutters[i].relays[ITEM_DOWN].pin, RELAY_OPEN);
@@ -347,7 +350,7 @@ void setup ()
       sprintf(tbs, "(%02d),", shutters[i].relays[ITEM_DOWN].pin);
       Serial.print(tbs);
       
-      delay(100);
+      delay(100); // wait for a second for stability
     }
     
     Serial.println("");
@@ -360,14 +363,19 @@ void setup ()
    Serial.print("enable buttons : ");
    Serial.println(g_storage.enable_buttons);
    
-    Serial.print("enable centralized button : ");
+   Serial.print("enable centralized button : ");
    Serial.println(g_storage.enable_centralized_buttons);
+
+   Serial.print("enable ethernet : ");
+   Serial.println(g_storage.enable_ethernet);
   
-   Serial.println("init server");
-  Ethernet.begin(mac);
-  server.begin();
-  Serial.print("server is at ");
-  Serial.println(Ethernet.localIP());
+   if(g_storage.enable_ethernet){
+    Serial.println("init server");
+    Ethernet.begin(mac);
+    server.begin();
+    Serial.print("server is at ");
+    Serial.println(Ethernet.localIP());
+    }
   last_dhcp_renew = millis();
   
   Serial.println("-- init done --");
@@ -865,7 +873,7 @@ void manage_client()
       }
     }
     // give the web browser time to receive the data
-    delay(100);
+    delay(1);
     // close the connection:
     client.stop();
    // Serial.println("client disconnected");
@@ -1104,7 +1112,9 @@ void vr(int index)
 ////////////////////////////////////////////////////////////////
 void loop ()
 {
-   manage_client();
+   if(g_storage.enable_ethernet){
+    manage_client();
+   }
 //    Serial.println("----------");
 
    
@@ -1116,5 +1126,5 @@ void loop ()
    vrall(nbmaxitems-1); // -> VRALL ALL
   
   //delay(100);
-  delay(100);
+  delay(10);
 }
