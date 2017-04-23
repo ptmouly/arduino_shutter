@@ -73,6 +73,10 @@
   // (this can happen when input pins are not correctly
   // connected to the ground or vcc and occilate from the noise
   #define MIN_TIME_ACTION_MS 300
+
+  
+  // maximum time to be in stady state in milliseconds
+  #define MAX_TIME_TIP_ACTION_MS 1000
   
   // put back relays to stop state for the shutter, set to 0 to disable
   #define AUTO_STOP_TIMEOUT  65000 
@@ -978,6 +982,12 @@ void test_button(int index, int up_down)
      {
         trace_button(index, up_down);
         Serial.println(" RELEASED");
+        unsigned long diff = millis_diff(inow, shutters[index].last_action_time_ms);
+        if(diff < MAX_TIME_TIP_ACTION_MS)
+        {// tip operation
+            ActivateRelay(index, up_down, RELAY_OPEN);
+        }
+        
       }
       
        //
@@ -996,12 +1006,13 @@ void test_button(int index, int up_down)
 void
 test_general_button(int index, int up_down)
 {
-  if(shutters[index].buttons[up_down].pin == 0)
+    if(shutters[index].buttons[up_down].pin == 0)
     return;
 
   int current_val =   digitalRead(shutters[index].buttons[up_down].pin);
-  int current_relay = shutters[index].relays[up_down].state ? RELAY_CLOSED : RELAY_OPEN; //digitalRead(shutters[index].relays[up_down].pin);
-  int current_relay_op = shutters[index].relays[!up_down].state? RELAY_CLOSED : RELAY_OPEN; //digitalRead(shutters[index].relays[!up_down].pin);
+  int current_relay = digitalRead(shutters[index].relays[up_down].pin);
+  //int current_relay_op = digitalRead(shutters[index].relays[!up_down].pin);
+  int next_relay_val;
   unsigned long inow = millis();
   
   // timeout management
@@ -1012,20 +1023,22 @@ test_general_button(int index, int up_down)
           unsigned long diff = millis_diff(inow, shutters[index].last_action_time_ms);
           
           if(diff  > (AUTO_STOP_TIMEOUT) )
-          {     
-            shutters[index].relays[up_down].state = false;
-            shutters[index].relays[!up_down].state = false;
-            trace_relay(index, up_down);
-            Serial.print(" auto timeout (");
-            Serial.print(diff);
-            Serial.println("ms)  ");
-            
+          { 
+            ActivateRelay(index, up_down, RELAY_OPEN);
             return;
           }
         
   }
   
-  if(!g_storage.enable_centralized_buttons)
+  boolean current_state = (current_relay == RELAY_CLOSED );
+  if( current_state != shutters[index].relays[up_down].state)
+  {
+     trace_relay(index, up_down);
+     Serial.println("state mismatch !!");
+     shutters[index].relays[up_down].state = current_state;
+  }
+  
+  if(!g_storage.enable_buttons)
   {
       return;
   }
@@ -1033,47 +1046,55 @@ test_general_button(int index, int up_down)
   if (current_val == BUTTON_PRESSED)
   {
 
-    if (shutters[index].last_action_button == -1 
-    ||  shutters[index].last_action_button == (!up_down)
-    || (!shutters[index].buttons[up_down].state))
-    {
+    if (shutters[index].last_action_button == -1 // first time (state is not correct)
+        || shutters[index].last_action_button == (!up_down) // previous other button ?
+        || !shutters[index].buttons[up_down].state)
+    {       
       
+      unsigned long diff = millis_diff(inow, shutters[index].last_action_time_ms);
       
-    unsigned long diff = millis_diff(inow, shutters[index].last_action_time_ms);
-
-      if(diff < MIN_TIME_ACTION_MS)
-      {
-          trace_button(index, up_down);
-          Serial.print(" pushed too fast !! (");
-          Serial.print(diff);
-          Serial.println("ms)");
-    
-         return;
-      }
-    
+        if(diff < MIN_TIME_ACTION_MS)
+        {
+           /* trace_button(index, up_down);
+            Serial.print(" pushed too fast !! (");
+            Serial.print(diff);
+            Serial.println("ms)  ");*/
+  
+           /* Serial.print("last_action ");          
+            Serial.print(shutters[index].last_action_button);    
+            Serial.print(" state ");
+            Serial.println(shutters[index].buttons[up_down].state);
+      */
+           return;
+        }
+      
     
       trace_button(index, up_down);
       Serial.print(" pushed (");
       Serial.print(diff);
       Serial.println("ms)");
-      
-      shutters[index].buttons[up_down].state = true;
-   
-      shutters[index].relays[up_down].state = !shutters[index].relays[up_down].state;
-      shutters[index].relays[!up_down].state = false;
-      
+
       for(int i=0; i<nbshutters; i++)
       {     
-        shutters[i].relays[up_down].state = shutters[index].relays[up_down].state;
-        shutters[i].relays[!up_down].state = false;
-        
-        digitalWrite (shutters[i].relays[!up_down].pin, RELAY_OPEN);
-        digitalWrite (shutters[i].relays[up_down].pin, shutters[i].relays[up_down].state ? RELAY_CLOSED :  RELAY_OPEN);
+       // always disable opposite relay
+       ActivateRelay(i, !up_down, RELAY_OPEN);
+       
+       bool bnext_state = !(current_relay == RELAY_CLOSED);
+       next_relay_val = bnext_state ? RELAY_CLOSED :  RELAY_OPEN;
+       
+       ActivateRelay(i, up_down, next_relay_val);
+       
+       shutters[i].last_action_time_ms = inow;
       }
-      
-      shutters[index].last_action_time_ms = inow;
+
     }
-   
+    else
+    {
+        /*trace_button(index, up_down);
+        Serial.println(" still pushed");*/
+    }
+
+    shutters[index].buttons[up_down].state = true;
     shutters[index].last_action_button = up_down;
   }
   else if (current_val == BUTTON_RELEASED)
@@ -1084,7 +1105,13 @@ test_general_button(int index, int up_down)
         Serial.println(" RELEASED");
       }
       
+       //
     shutters[index].buttons[up_down].state = false;
+  } 
+  else
+  {
+      trace_button(index, up_down);
+      Serial.println(" ??");
   }
   
 }
