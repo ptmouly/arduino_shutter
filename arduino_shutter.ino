@@ -76,7 +76,7 @@
 
   
   // maximum time to be in stady state in milliseconds
-  #define MAX_TIME_TIP_ACTION_MS 1000
+  #define MAX_TIME_INCHING_OPERATION_MS 300
   
   // put back relays to stop state for the shutter, set to 0 to disable
   #define AUTO_STOP_TIMEOUT  65000 
@@ -981,10 +981,12 @@ void test_button(int index, int up_down)
      if( shutters[index].buttons[up_down].state)
      {
         trace_button(index, up_down);
-        Serial.println(" RELEASED");
+        Serial.println(" RELEASED (");
+		Serial.print(diff);
+        Serial.println("ms)");
         unsigned long diff = millis_diff(inow, shutters[index].last_action_time_ms);
-        if(diff < MAX_TIME_TIP_ACTION_MS)
-        {// tip operation
+        if(diff < MAX_TIME_INCHING_OPERATION_MS)
+        {// inching operation
             ActivateRelay(index, up_down, RELAY_OPEN);
         }
         
