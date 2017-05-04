@@ -67,6 +67,9 @@
   
   #define BUTTON_PRESSED  HIGH
   #define BUTTON_RELEASED LOW
+
+  #define SENSOR_AKTIVE HIGH
+  #define SENSOR_INAKTIVE LOW
   
   // minimimun time in milliseconds between button pressed on one shutter
   // this prevent to switch relays too rapidly
@@ -76,13 +79,15 @@
 
   
   // maximum time to be in stady state in milliseconds
-  #define MAX_TIME_INCHING_OPERATION_MS 300
+  #define MAX_TIME_INCHING_OPERATION_MS 730
   
   // put back relays to stop state for the shutter, set to 0 to disable
   #define AUTO_STOP_TIMEOUT  65000 
   
   // manage dhcp disconnection
   #define DHCP_RENEW_TIMEOUT 43200000 //1000*3600*12
+
+int SensorStatus = SENSOR_INAKTIVE;
  
 //////////////////////////
 // how many shutters do you have ?
@@ -289,7 +294,7 @@ void setup ()
   //init
   for(int i=0; i<nbmaxitems; i++)
   {
-    delay(100); // wait for a second for stability
+    //delay(100); // wait for a second for stability
     shutters[i].buttons[ITEM_UP].pin = pushButtonUp[i];
     shutters[i].buttons[ITEM_UP].state = false;
     
@@ -328,14 +333,14 @@ void setup ()
       sprintf(tbs, "(%02d),", shutters[i].buttons[ITEM_UP].pin);
       Serial.print(tbs);
       
-      delay(100); // wait for a second for stability
+      //delay(100); // wait for a second for stability
       
       pinMode (shutters[i].buttons[ITEM_DOWN].pin, INPUT);
      
       Serial.print(" BUTTON_DOWN ");
       sprintf(tbs, "(%02d),", shutters[i].buttons[ITEM_DOWN].pin);
       Serial.print(tbs);
-      delay(100); // wait for a second for stability
+      //delay(100); // wait for a second for stability
     }
     
     if(i != nbshutters && shutters[i].relays[ITEM_UP].pin > 0)
@@ -345,7 +350,7 @@ void setup ()
       Serial.print(" RELAY_UP ");
       sprintf(tbs, "(%02d),", shutters[i].relays[ITEM_UP].pin);
       Serial.print(tbs);
-      delay(100); // wait for a second for stability
+      //delay(100); // wait for a second for stability
       
       pinMode (shutters[i].relays[ITEM_DOWN].pin, OUTPUT);
       digitalWrite(shutters[i].relays[ITEM_DOWN].pin, RELAY_OPEN);
@@ -354,7 +359,7 @@ void setup ()
       sprintf(tbs, "(%02d),", shutters[i].relays[ITEM_DOWN].pin);
       Serial.print(tbs);
       
-      delay(100); // wait for a second for stability
+      //delay(100); // wait for a second for stability
     }
     
     Serial.println("");
@@ -980,11 +985,11 @@ void test_button(int index, int up_down)
   {
      if( shutters[index].buttons[up_down].state)
      {
+        unsigned long diff = millis_diff(inow, shutters[index].last_action_time_ms);
         trace_button(index, up_down);
         Serial.println(" RELEASED (");
-		Serial.print(diff);
+		    Serial.print(diff);
         Serial.println("ms)");
-        unsigned long diff = millis_diff(inow, shutters[index].last_action_time_ms);
         if(diff < MAX_TIME_INCHING_OPERATION_MS)
         {// inching operation
             ActivateRelay(index, up_down, RELAY_OPEN);
@@ -1075,7 +1080,12 @@ test_general_button(int index, int up_down)
       Serial.print(" pushed (");
       Serial.print(diff);
       Serial.println("ms)");
-
+      
+      if(up_down == ITEM_UP)
+      {
+        SensorStatus = SENSOR_AKTIVE;        
+      }
+      
       for(int i=0; i<nbshutters; i++)
       {     
        // always disable opposite relay
@@ -1101,6 +1111,11 @@ test_general_button(int index, int up_down)
   }
   else if (current_val == BUTTON_RELEASED)
   {
+     if(up_down == ITEM_UP)
+     {
+       SensorStatus = SENSOR_INAKTIVE;        
+     }
+     
      if( shutters[index].buttons[up_down].state)
      {
         trace_button(index, up_down);
@@ -1146,12 +1161,14 @@ void loop ()
    }
 //    Serial.println("----------");
 
-   
-   for(int i=0; i<nbshutters; i++)
+   if (SensorStatus == SENSOR_INAKTIVE)
    {
-         vr(i);
+     for(int i=0; i<nbshutters; i++)
+     {
+           vr(i);
+     }    
    }
-
+   
    vrall(nbmaxitems-1); // -> VRALL ALL
   
   //delay(100);
